@@ -1,0 +1,11 @@
+{
+  "name": "t-note",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "license": "ISC",
+  "devDependencies": {
+    "tsx": "4.20.3",
+    "typescript": "5.8.3"
+  }
+}
