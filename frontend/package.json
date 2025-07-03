@@ -1,5 +1,5 @@
 {
-	"name": "frontend",
+	"name": "t-note",
 	"private": true,
 	"type": "module",
 	"scripts": {
