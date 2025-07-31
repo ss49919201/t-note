@@ -2,7 +2,7 @@
   "hooks": {
     "EventName": [
       {
-        "matcher": "ToolPattern",
+        "matcher": "Edit|Write",
         "hooks": [
           {
             "type": "command",
