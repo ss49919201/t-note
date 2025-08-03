@@ -1,4 +1,4 @@
-import { createCookieSessionStorage } from "@remix-run/cloudflare";
+import { createCookieSessionStorage } from "react-router";
 
 // セッション設定
 const sessionSecret = "your-session-secret"; // 実際の運用では環境変数から取得

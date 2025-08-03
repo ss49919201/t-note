@@ -81,3 +81,44 @@ Phase ごとのサブタスクが完了するたびに、ユーザーにレビ�
 - 投稿編集・削除は投稿者本人のみ可能
 - 全ての投稿内容はマークダウン形式で保存
 - スレッド構造は parent_post_id で実現
+
+## TypeScript 型安全性の厳格な遵守
+
+**`any` 型の使用を絶対に禁止する**
+
+### なぜ `any` を避けるべきか
+
+1. **型安全性の破綻**: TypeScript の最大の利点である静的型チェックを無効化し、実行時エラーのリスクを大幅に増大させる
+2. **開発体験の劣化**: IDE の IntelliSense、自動補完、リファクタリング支援が完全に機能しなくなる
+3. **保守性の悪化**: コードの意図が不明確になり、将来的な変更時にバグを引き起こしやすくなる
+4. **技術的負債の蓄積**: 一時的な解決策として使用されても、後で適切な型定義が必要になり、作業コストが倍増する
+
+### 代替アプローチ
+
+- **既存型の活用**: `model/topic.ts` の `Topic`, `Post`, `User` 型を最大限活用する
+- **Union型**: `string | null`, `Topic | undefined` など具体的な型の組み合わせを使用
+- **`unknown`型**: 型が不明な場合は `any` ではなく `unknown` を使用し、型ガードで安全に処理
+- **部分型**: `Partial<Topic>`, `Pick<Topic, 'id' | 'title'>` などユーティリティ型を活用
+- **明示的な型定義**: 新しい型が必要な場合は interface や type で明確に定義
+
+### 実装例
+
+```typescript
+// ❌ 絶対にダメ
+const topics: any[] = [];
+
+// ✅ 既存型を活用
+const topics: Topic[] = [];
+
+// ✅ Union型で明確に
+const topic: Topic | null = null;
+
+// ✅ 不明な型は unknown で安全に
+function processData(data: unknown) {
+  if (typeof data === 'object' && data !== null) {
+    // 型ガードで安全に処理
+  }
+}
+```
+
+この制約により、コードベース全体の品質と保守性を確保し、実行時エラーを最小限に抑える。
