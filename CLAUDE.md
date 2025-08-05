@@ -14,11 +14,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 技術スタック
 
-- **フレームワーク**: Remix（React-based）
-- **データベース**: SQLite（開発用）、Prisma ORM
+- **フレームワーク**: React Router
+- **データベース**: D1（Cloudflare）、Drizzle ORM
 - **スタイリング**: Tailwind CSS
-- **マークダウン**: React Markdown
-- **テスト**: Vitest + @testing-library/react + Playwright
+- **テスト**: Vitest + @testing-library/react
 - **認証**: セッション管理
 
 ## 開発手法
@@ -79,7 +78,7 @@ Phase ごとのサブタスクが完了するたびに、ユーザーにレビ�
 
 - サインアップ機能は実装しない（認証済みユーザーのみ）
 - 投稿編集・削除は投稿者本人のみ可能
-- 全ての投稿内容はマークダウン形式で保存
+- 全ての投稿内容はプレーンテキスト形式で保存
 - スレッド構造は parent_post_id で実現
 
 ## TypeScript 型安全性の厳格な遵守
