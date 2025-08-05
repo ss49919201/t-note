@@ -179,11 +179,11 @@ export default function NewTopic({
                       defaultValue={values.content || ""}
                       required
                       className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                      placeholder="Topicの内容をマークダウン形式で入力してください..."
+                      placeholder="Topicの内容を入力してください..."
                     />
                   </div>
                   <p className="mt-2 text-sm text-gray-500">
-                    マークダウン記法が使用できます。
+                    プレーンテキストで入力してください。
                   </p>
                 </div>
 
