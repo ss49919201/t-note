@@ -3,3 +3,5 @@ node_modules
 
 # Others
 tmp
+
+.serena/cache
