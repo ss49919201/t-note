@@ -3,6 +3,8 @@ import { Link } from "react-router";
 import { requireAuth } from "../auth/guards.server";
 import { getUserById } from "../auth/user.server";
 import type { Topic } from "../../model/topic";
+import { TopicService } from "../services/topic.server";
+import { drizzle } from "drizzle-orm/d1";
 
 export function meta({}: Route.MetaArgs) {
   return [
@@ -11,14 +13,24 @@ export function meta({}: Route.MetaArgs) {
   ];
 }
 
-export async function loader({ request }: Route.LoaderArgs) {
+export async function loader({ request, context }: Route.LoaderArgs) {
   const userId = await requireAuth(request);
   const user = await getUserById(userId);
   
-  // TODO: TopicServiceを使用してTopic一覧を取得
-  const topics: Topic[] = [];
-  
-  return { user, topics };
+  try {
+    // データベース接続を取得
+    const db = drizzle(context.cloudflare.env.BINDING_NAME);
+    const topicService = new TopicService(db);
+    
+    // Topic一覧を取得（最新20件）
+    const topics = await topicService.getAllTopics(20, 0);
+    
+    return { user, topics };
+  } catch (error) {
+    console.error("Topic一覧取得エラー:", error);
+    // エラーの場合は空の配列を返す
+    return { user, topics: [] };
+  }
 }
 
 export default function Home({ loaderData }: Route.ComponentProps) {
@@ -76,12 +88,76 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                 </div>
               </div>
             ) : (
-              <div className="space-y-4">
-                <h2 className="text-lg font-medium text-gray-900">Topics</h2>
-                {/* TODO: Topic一覧の表示 */}
-                <div className="text-sm text-gray-600">
-                  Topic一覧の実装予定地
+              <div className="space-y-6">
+                <div className="flex justify-between items-center">
+                  <h2 className="text-lg font-medium text-gray-900">
+                    Topics ({topics.length})
+                  </h2>
                 </div>
+                
+                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                  {topics.map((topic) => (
+                    <div
+                      key={topic.id}
+                      className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow"
+                    >
+                      <div className="flex justify-between items-start mb-3">
+                        <h3 className="text-lg font-semibold text-gray-900 line-clamp-2">
+                          <Link
+                            to={`/topics/${topic.id}`}
+                            className="hover:text-indigo-600"
+                          >
+                            {topic.title}
+                          </Link>
+                        </h3>
+                      </div>
+                      
+                      <p className="text-gray-600 text-sm mb-4 line-clamp-3">
+                        {topic.content}
+                      </p>
+                      
+                      <div className="flex items-center justify-between text-xs text-gray-500">
+                        <span>
+                          {topic.created_at.toLocaleDateString()}
+                        </span>
+                        {topic.tags && topic.tags.length > 0 && (
+                          <div className="flex space-x-1">
+                            {topic.tags.slice(0, 2).map((tag) => (
+                              <span
+                                key={tag.id}
+                                className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs"
+                              >
+                                {tag.name}
+                              </span>
+                            ))}
+                            {topic.tags.length > 2 && (
+                              <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs">
+                                +{topic.tags.length - 2}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      
+                      <div className="mt-4 pt-4 border-t border-gray-100">
+                        <Link
+                          to={`/topics/${topic.id}`}
+                          className="text-indigo-600 hover:text-indigo-800 text-sm font-medium"
+                        >
+                          詳細を見る →
+                        </Link>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                
+                {topics.length >= 20 && (
+                  <div className="text-center">
+                    <button className="text-indigo-600 hover:text-indigo-800 text-sm font-medium">
+                      さらに読み込む
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>

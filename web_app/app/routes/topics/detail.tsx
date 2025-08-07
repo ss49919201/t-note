@@ -5,6 +5,7 @@ import { getUserById } from "../../auth/user.server";
 import { TopicService } from "../../services/topic.server";
 import { PostService } from "../../services/post.server";
 import { drizzle } from "drizzle-orm/d1";
+import { useState, useEffect } from "react";
 
 export function meta() {
   return [
@@ -51,32 +52,66 @@ interface ActionData {
   error?: string;
   success?: string;
   replyTo?: string;
+  action?: string;
 }
 
 export async function action({ request, params, context }: Route.ActionArgs) {
   const userId = await requireAuth(request);
   const formData = await request.formData();
   const topicId = params.id;
+  const actionType = formData.get("action");
 
   if (!topicId) {
     return { error: "Topic ID is required" };
-  }
-
-  const content = formData.get("content");
-  const replyTo = formData.get("replyTo");
-
-  // バリデーション
-  if (typeof content !== "string" || content.trim().length === 0) {
-    return {
-      error: "投稿内容を入力してください",
-      replyTo: typeof replyTo === "string" ? replyTo : undefined,
-    };
   }
 
   try {
     // データベース接続を取得
     const db = drizzle(context.cloudflare.env.BINDING_NAME);
     const postService = new PostService(db);
+
+    // 投稿編集
+    if (actionType === "edit_post") {
+      const postId = formData.get("postId");
+      const content = formData.get("content");
+
+      if (typeof postId !== "string" || typeof content !== "string" || content.trim().length === 0) {
+        return { error: "投稿内容を入力してください" };
+      }
+
+      await postService.updatePost({
+        id: postId,
+        content: content.trim(),
+        user_id: parseInt(userId),
+      });
+
+      return { success: "投稿を更新しました", action: "edit_post" };
+    }
+
+    // 投稿削除
+    if (actionType === "delete_post") {
+      const postId = formData.get("postId");
+
+      if (typeof postId !== "string") {
+        return { error: "投稿IDが無効です" };
+      }
+
+      await postService.deletePost(postId, parseInt(userId));
+
+      return { success: "投稿を削除しました", action: "delete_post" };
+    }
+
+    // 新規投稿（既存の処理）
+    const content = formData.get("content");
+    const replyTo = formData.get("replyTo");
+
+    // バリデーション
+    if (typeof content !== "string" || content.trim().length === 0) {
+      return {
+        error: "投稿内容を入力してください",
+        replyTo: typeof replyTo === "string" ? replyTo : undefined,
+      };
+    }
 
     // PostServiceを使用してPost作成
     const postId = await postService.createPost({
@@ -89,10 +124,10 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     console.log("Post作成成功:", { postId, topicId, userId });
     return { success: "投稿しました" };
   } catch (error) {
-    console.error("Post作成エラー:", error);
+    console.error("Post操作エラー:", error);
     return {
-      error: error instanceof Error ? error.message : "投稿に失敗しました",
-      replyTo: typeof replyTo === "string" ? replyTo : undefined,
+      error: error instanceof Error ? error.message : "操作に失敗しました",
+      replyTo: typeof formData.get("replyTo") === "string" ? formData.get("replyTo") : undefined,
     };
   }
 }
@@ -103,6 +138,16 @@ export default function TopicDetail({
 }: Route.ComponentProps) {
   const { user, topic, posts, topicId } = loaderData;
   const typedActionData = actionData as ActionData | undefined;
+  const [editingPostId, setEditingPostId] = useState<string | null>(null);
+  const [editingContent, setEditingContent] = useState<string>("");
+
+  // 編集成功時に編集モードをリセット
+  useEffect(() => {
+    if (typedActionData?.success && typedActionData?.action === "edit_post") {
+      setEditingPostId(null);
+      setEditingContent("");
+    }
+  }, [typedActionData]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -255,42 +300,87 @@ export default function TopicDetail({
                           : "border-indigo-400"
                       }`}
                     >
-                      <div className="text-gray-700 whitespace-pre-wrap mb-2">
-                        {post.content}
-                      </div>
-                      <div className="flex justify-between items-center text-sm text-gray-500">
-                        <span>
-                          投稿日: {post.created_at.toLocaleDateString()}
-                        </span>
-                        <div className="space-x-2">
-                          <button
-                            type="button"
-                            className="text-indigo-600 hover:text-indigo-800"
-                            onClick={() => {
-                              // TODO: 返信フォームの表示切り替え
-                              console.log("返信:", post.id);
-                            }}
-                          >
-                            返信
-                          </button>
-                          {post.user_id === parseInt(user?.id || "0") && (
-                            <>
+                      {editingPostId === post.id ? (
+                        <Form method="post" className="space-y-3">
+                          <input type="hidden" name="action" value="edit_post" />
+                          <input type="hidden" name="postId" value={post.id} />
+                          <textarea
+                            name="content"
+                            value={editingContent}
+                            onChange={(e) => setEditingContent(e.target.value)}
+                            className="w-full p-2 border border-gray-300 rounded-md text-sm"
+                            rows={3}
+                            required
+                          />
+                          <div className="flex space-x-2">
+                            <button
+                              type="submit"
+                              className="px-3 py-1 bg-indigo-600 text-white rounded-md text-sm hover:bg-indigo-700"
+                            >
+                              保存
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingPostId(null)}
+                              className="px-3 py-1 bg-gray-300 text-gray-700 rounded-md text-sm hover:bg-gray-400"
+                            >
+                              キャンセル
+                            </button>
+                          </div>
+                        </Form>
+                      ) : (
+                        <>
+                          <div className="text-gray-700 whitespace-pre-wrap mb-2">
+                            {post.content}
+                          </div>
+                          <div className="flex justify-between items-center text-sm text-gray-500">
+                            <span>
+                              投稿日: {post.created_at.toLocaleDateString()}
+                            </span>
+                            <div className="space-x-2">
                               <button
                                 type="button"
-                                className="text-gray-600 hover:text-gray-800"
+                                className="text-indigo-600 hover:text-indigo-800"
+                                onClick={() => {
+                                  // TODO: 返信フォームの表示切り替え
+                                  console.log("返信:", post.id);
+                                }}
                               >
-                                編集
+                                返信
                               </button>
-                              <button
-                                type="button"
-                                className="text-red-600 hover:text-red-800"
-                              >
-                                削除
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      </div>
+                              {post.user_id === parseInt(user?.id || "0") && (
+                                <>
+                                  <button
+                                    type="button"
+                                    className="text-gray-600 hover:text-gray-800"
+                                    onClick={() => {
+                                      setEditingPostId(post.id);
+                                      setEditingContent(post.content);
+                                    }}
+                                  >
+                                    編集
+                                  </button>
+                                  <Form method="post" className="inline">
+                                    <input type="hidden" name="action" value="delete_post" />
+                                    <input type="hidden" name="postId" value={post.id} />
+                                    <button
+                                      type="submit"
+                                      className="text-red-600 hover:text-red-800"
+                                      onClick={(e) => {
+                                        if (!confirm("この投稿を削除してもよろしいですか？")) {
+                                          e.preventDefault();
+                                        }
+                                      }}
+                                    >
+                                      削除
+                                    </button>
+                                  </Form>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </>
+                      )}
                     </div>
                   ))}
                 </div>
