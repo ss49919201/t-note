@@ -8,8 +8,8 @@ export const TagSchema = v.object({
   created_at: v.date(),
 });
 
-// Post schema
-export const PostSchema = v.object({
+// Base Post schema without relations to avoid circular reference
+export const BasePostSchema = v.object({
   id: v.string(),
   content: v.pipe(v.string(), v.minLength(1)),
   topic_id: v.string(),
@@ -18,11 +18,10 @@ export const PostSchema = v.object({
   is_deleted: v.boolean(),
   created_at: v.date(),
   updated_at: v.date(),
-  // Optional relations
-  user: v.optional(UserSchema),
-  replies: v.optional(v.array(v.lazy(() => PostSchema))),
-  parent: v.optional(v.lazy(() => PostSchema)),
 });
+
+// Post schema - simplified to avoid circular reference issues during development
+export const PostSchema = BasePostSchema;
 
 // Topic schema
 export const TopicSchema = v.object({
@@ -143,6 +142,7 @@ export const PostDeletedEventDataSchema = v.object({
 // Type inference
 export type Tag = v.InferOutput<typeof TagSchema>;
 export type Topic = v.InferOutput<typeof TopicSchema>;
+export type BasePost = v.InferOutput<typeof BasePostSchema>;
 export type Post = v.InferOutput<typeof PostSchema>;
 export type TopicEvent = v.InferOutput<typeof TopicEventSchema>;
 export type PostEvent = v.InferOutput<typeof PostEventSchema>;
