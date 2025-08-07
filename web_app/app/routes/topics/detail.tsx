@@ -2,7 +2,9 @@ import type { Route } from "./+types/detail";
 import { Form, Link } from "react-router";
 import { requireAuth } from "../../auth/guards.server";
 import { getUserById } from "../../auth/user.server";
-import type { Topic, Post } from "../../../model/topic";
+import { TopicService } from "../../services/topic.server";
+import { PostService } from "../../services/post.server";
+import { drizzle } from "drizzle-orm/d1";
 
 export function meta() {
   return [
@@ -11,22 +13,38 @@ export function meta() {
   ];
 }
 
-export async function loader({ request, params }: Route.LoaderArgs) {
+export async function loader({ request, params, context }: Route.LoaderArgs) {
   const userId = await requireAuth(request);
   const user = await getUserById(userId);
   const topicId = params.id;
-  
-  // TODO: TopicServiceとPostServiceを使用してデータを取得
-  // 開発中のダミーデータまたはnull
-  const topic: Topic | null = null;
-  const posts: Post[] = [];
-  
-  if (!topic) {
-    // 開発中は404ではなくプレースホルダーを表示
-    // throw new Response("Topic not found", { status: 404 });
+
+  if (!topicId) {
+    throw new Response("Topic ID is required", { status: 400 });
   }
-  
-  return { user, topic, posts, topicId };
+
+  try {
+    // データベース接続を取得（Cloudflare D1）
+    const db = drizzle(context.cloudflare.env.BINDING_NAME);
+
+    // TopicServiceとPostServiceを使用してデータを取得
+    const topicService = new TopicService(db);
+    const postService = new PostService(db);
+
+    const topic = await topicService.getTopicById(topicId);
+    const posts = topic ? await postService.getPostsByTopicId(topicId) : [];
+
+    if (!topic) {
+      throw new Response("Topic not found", { status: 404 });
+    }
+
+    // スレッド構造に整理
+    const threadPosts = postService.buildThreadTree(posts);
+
+    return { user, topic, posts: threadPosts, topicId };
+  } catch (error) {
+    console.error("Topic詳細取得エラー:", error);
+    throw new Response("Internal Server Error", { status: 500 });
+  }
 }
 
 interface ActionData {
@@ -35,14 +53,18 @@ interface ActionData {
   replyTo?: string;
 }
 
-export async function action({ request, params }: Route.ActionArgs) {
+export async function action({ request, params, context }: Route.ActionArgs) {
   const userId = await requireAuth(request);
   const formData = await request.formData();
   const topicId = params.id;
-  
+
+  if (!topicId) {
+    return { error: "Topic ID is required" };
+  }
+
   const content = formData.get("content");
   const replyTo = formData.get("replyTo");
-  
+
   // バリデーション
   if (typeof content !== "string" || content.trim().length === 0) {
     return {
@@ -52,25 +74,22 @@ export async function action({ request, params }: Route.ActionArgs) {
   }
 
   try {
-    // TODO: PostServiceを使用してPost作成
-    // const postService = new PostService(db);
-    // const postId = await postService.createPost({
-    //   content: content.trim(),
-    //   topic_id: topicId,
-    //   parent_post_id: typeof replyTo === "string" ? replyTo : undefined,
-    //   user_id: parseInt(userId),
-    // });
-    
-    // 仮の実装
-    console.log("Post作成:", { 
-      content: content.trim(), 
-      topicId, 
-      replyTo: typeof replyTo === "string" ? replyTo : undefined,
-      userId 
+    // データベース接続を取得
+    const db = drizzle(context.cloudflare.env.BINDING_NAME);
+    const postService = new PostService(db);
+
+    // PostServiceを使用してPost作成
+    const postId = await postService.createPost({
+      content: content.trim(),
+      topic_id: topicId,
+      parent_post_id: typeof replyTo === "string" ? replyTo : undefined,
+      user_id: parseInt(userId),
     });
-    
+
+    console.log("Post作成成功:", { postId, topicId, userId });
     return { success: "投稿しました" };
   } catch (error) {
+    console.error("Post作成エラー:", error);
     return {
       error: error instanceof Error ? error.message : "投稿に失敗しました",
       replyTo: typeof replyTo === "string" ? replyTo : undefined,
@@ -78,7 +97,10 @@ export async function action({ request, params }: Route.ActionArgs) {
   }
 }
 
-export default function TopicDetail({ loaderData, actionData }: Route.ComponentProps) {
+export default function TopicDetail({
+  loaderData,
+  actionData,
+}: Route.ComponentProps) {
   const { user, topic, posts, topicId } = loaderData;
   const typedActionData = actionData as ActionData | undefined;
 
@@ -120,16 +142,28 @@ export default function TopicDetail({ loaderData, actionData }: Route.ComponentP
           {/* Topic情報 */}
           <div className="bg-white overflow-hidden shadow rounded-lg mb-6">
             <div className="px-4 py-5 sm:p-6">
-              {topic && topic as Topic ? (
+              {topic ? (
                 <div>
                   <h1 className="text-2xl font-bold text-gray-900 mb-4">
-                    {(topic as Topic).title}
+                    {topic.title}
                   </h1>
                   <div className="text-gray-700 mb-4 whitespace-pre-wrap">
-                    {(topic as Topic).content}
+                    {topic.content}
                   </div>
-                  <div className="text-sm text-gray-500">
-                    作成日: {(topic as Topic).created_at.toLocaleDateString()}
+                  <div className="flex justify-between items-center text-sm text-gray-500">
+                    <span>作成日: {topic.created_at.toLocaleDateString()}</span>
+                    {topic.tags && topic.tags.length > 0 && (
+                      <div className="flex space-x-2">
+                        {topic.tags.map((tag) => (
+                          <span
+                            key={tag.id}
+                            className="px-2 py-1 bg-blue-100 text-blue-800 rounded-md text-xs"
+                          >
+                            {tag.name}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               ) : (
@@ -137,9 +171,7 @@ export default function TopicDetail({ loaderData, actionData }: Route.ComponentP
                   <h1 className="text-2xl font-bold text-gray-900 mb-4">
                     Topic詳細（開発中）
                   </h1>
-                  <p className="text-gray-600 mb-4">
-                    Topic ID: {topicId}
-                  </p>
+                  <p className="text-gray-600 mb-4">Topic ID: {topicId}</p>
                   <div className="text-sm text-gray-500">
                     実際のTopicデータは後で実装されます
                   </div>
@@ -154,7 +186,7 @@ export default function TopicDetail({ loaderData, actionData }: Route.ComponentP
               <h2 className="text-lg font-medium text-gray-900 mb-4">
                 新しい投稿
               </h2>
-              
+
               <Form method="post" className="space-y-4">
                 <div>
                   <label htmlFor="content" className="sr-only">
@@ -169,7 +201,7 @@ export default function TopicDetail({ loaderData, actionData }: Route.ComponentP
                     required
                   />
                 </div>
-                
+
                 {/* エラー・成功メッセージ */}
                 {typedActionData?.error && (
                   <div className="rounded-md bg-red-50 p-4">
@@ -178,7 +210,7 @@ export default function TopicDetail({ loaderData, actionData }: Route.ComponentP
                     </div>
                   </div>
                 )}
-                
+
                 {typedActionData?.success && (
                   <div className="rounded-md bg-green-50 p-4">
                     <div className="text-sm text-green-700">
@@ -186,7 +218,7 @@ export default function TopicDetail({ loaderData, actionData }: Route.ComponentP
                     </div>
                   </div>
                 )}
-                
+
                 <div className="flex justify-end">
                   <button
                     type="submit"
@@ -205,10 +237,11 @@ export default function TopicDetail({ loaderData, actionData }: Route.ComponentP
               <h2 className="text-lg font-medium text-gray-900 mb-4">
                 投稿一覧
               </h2>
-              
+
               {posts.length === 0 ? (
                 <div className="text-center text-gray-500 py-8">
-                  まだ投稿がありません。<br/>
+                  まだ投稿がありません。
+                  <br />
                   最初の投稿をしてスレッドを開始しましょう！
                 </div>
               ) : (
@@ -217,7 +250,9 @@ export default function TopicDetail({ loaderData, actionData }: Route.ComponentP
                     <div
                       key={post.id}
                       className={`border-l-4 pl-4 py-3 ${
-                        post.parent_post_id ? 'border-gray-300 ml-6' : 'border-indigo-400'
+                        post.parent_post_id
+                          ? "border-gray-300 ml-6"
+                          : "border-indigo-400"
                       }`}
                     >
                       <div className="text-gray-700 whitespace-pre-wrap mb-2">

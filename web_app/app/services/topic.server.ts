@@ -1,6 +1,11 @@
 import { drizzle } from "drizzle-orm/d1";
 import { topicViewDao, topicEventDao, tagDao, topicTagViewDao } from "../../infra/db/d1/dao";
-import type { CreateTopicCommand, UpdateTopicCommand, Topic } from "../../model/topic";
+import type { 
+  CreateTopicCommand, 
+  UpdateTopicCommand, 
+  Topic,
+  TopicUpdatedEventData 
+} from "../../model/topic";
 import * as v from "valibot";
 import { CreateTopicCommandSchema, UpdateTopicCommandSchema } from "../../model/topic";
 
@@ -138,10 +143,15 @@ export class TopicService {
     }
 
     const now = new Date();
-    const eventData: any = {};
+    const eventData: TopicUpdatedEventData = {};
 
     // 更新されたフィールドを記録
-    const updateData: any = {
+    interface UpdateData {
+      updated_at: Date;
+      title?: string;
+      content?: string;
+    }
+    const updateData: UpdateData = {
       updated_at: now,
     };
 

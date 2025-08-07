@@ -2,6 +2,8 @@ import type { Route } from "./+types/new";
 import { Form, Link, redirect } from "react-router";
 import { requireAuth } from "../../auth/guards.server";
 import { getUserById } from "../../auth/user.server";
+import { TopicService } from "../../services/topic.server";
+import { drizzle } from "drizzle-orm/d1";
 
 export function meta({}: Route.MetaArgs) {
   return [
@@ -17,7 +19,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   return { user };
 }
 
-export async function action({ request }: Route.ActionArgs) {
+export async function action({ request, context }: Route.ActionArgs) {
   const userId = await requireAuth(request);
   const formData = await request.formData();
 
@@ -58,20 +60,24 @@ export async function action({ request }: Route.ActionArgs) {
       : [];
 
   try {
-    // TODO: TopicServiceを使用してTopic作成
-    // const topicService = new TopicService(db);
-    // const topicId = await topicService.createTopic({
-    //   title: title.trim(),
-    //   content: content.trim(),
-    //   user_id: parseInt(userId),
-    //   tags,
-    // });
+    // データベース接続を取得
+    const db = drizzle(context.cloudflare.env.BINDING_NAME);
+    const topicService = new TopicService(db);
+    
+    // TopicServiceを使用してTopic作成
+    const topicId = await topicService.createTopic({
+      title: title.trim(),
+      content: content.trim(),
+      user_id: parseInt(userId),
+      tags,
+    });
 
-    // 仮の実装: リダイレクト
-    console.log("Topic作成:", { title, content, tags, userId });
-
-    return redirect("/");
+    console.log("Topic作成成功:", { topicId, userId });
+    
+    // 作成したTopicの詳細ページにリダイレクト
+    return redirect(`/topics/${topicId}`);
   } catch (error) {
+    console.error("Topic作成エラー:", error);
     return {
       error: error instanceof Error ? error.message : "Topic作成に失敗しました",
       values: { 
